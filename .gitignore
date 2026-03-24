@@ -1,2 +1,10 @@
 .vs/
 out/
+*.sln
+*.vcxproj
+*.vcxproj.user
+*vcxproj.filters
+x64/
+venv/
+*.pem
+*.db
