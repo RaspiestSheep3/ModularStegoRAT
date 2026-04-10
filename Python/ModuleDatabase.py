@@ -292,6 +292,51 @@ def HandleClient(clientSocket : socket.socket):
                 clientSocket.send(response)
                 
                 seedNonceIncrement += 1
+                
+            elif(clientRequest["Type"] == "MODULE_QUERY"):
+                queryType = str(clientRequest["Query Type"])
+                query = str(clientRequest["Query"])
+                if(queryType.lower() == "id"):
+                    cursor.execute("""
+                        SELECT *
+                        FROM modules
+                        WHERE moduleID = ?
+                    """, (int(query),))
+                elif(queryType.lower() == "name"):
+                    cursor.execute("""
+                        SELECT *
+                        FROM modules
+                        WHERE moduleName LIKE ?
+                    """, (f"%{query}%",))
+                elif(queryType.lower() == "description"):
+                    cursor.execute("""
+                        SELECT *
+                        FROM modules
+                        WHERE moduleDescription LIKE ?
+                    """, (f"%{query}%",))
+                
+                rows = cursor.fetchall()
+                
+                entries = []
+                for row in rows:
+                    entries.append({
+                        "Module ID" : row[0],
+                        "Module Name" : row[1],
+                        "Module Owner Username" : row[2],
+                        "Module Version" : row[4],
+                        "Module Description" : row[5],
+                        "Module Last Edited" : row[6],
+                        "Dependencies" : row[7]
+                    })
+                
+                response = json.dumps({
+                    "Status" : "SUCCESS",
+                    "Entries" : entries
+                }).encode()
+                response = aes.encrypt(IncrementNonce(seedNonce, seedNonceIncrement), response, None).ljust(8192, b"\0")
+                clientSocket.send(response)
+                seedNonceIncrement += 1
+
 
 #Accept users
 incomingConnectionSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
