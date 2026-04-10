@@ -288,24 +288,43 @@ Description:
     
     return shopSeedNonceIncrement + 2
 
+def ShowHelpDisplay():
+    print(
+"""
+List of all commands:
+.define [username] [password] - Defines a new user
+.upload [module name] [local DLL path] [description] [username] [password] [dependencies IDs] - Uploads a new module
+.openShop - Opens a shop connection (run this before shopping)
+.browseShop - Browses the shop
+.browseShopNext - Goes to the next page of the shop
+.browseShopPrevious - Goes to the previous page of the shop
+.browseShopSetPage [page number] - Goes to a set page number of the shop
+.moduleQuery [query type - ID, Name or Description] [query] - Queries about modules
+.closeShop - Closes the shop connection
+.quit - Quits the system
+.help - Brings up all available commands
+""")
+
 running = True
 shopping = False
 currentShopPage = -1
 
+print("Welcome! Input .help to start")
 while running:
     userInput = input().split(" ")
     if(userInput[0] == ".define" and (not shopping)):
-        DefineNewUser("TestUser", "TestPass")
+        DefineNewUser(userInput[1], userInput[2])
     
     elif(userInput[0] == ".upload" and (not shopping)):
         UploadNewModule(
-            "TestMod2", 
-            "C:\\Users\\iniga\\OneDrive\\Programming\\ModularStegoRAT\\Modules\\RansomwareModule\\x64\\Debug\\RansomwareModule.dll", 
-            "This is a 2nd test mod", 
-            "TestUser", 
-            "TestPass", 
+            userInput[1], 
+            userInput[2], 
+            userInput[3], 
+            userInput[4], 
+            userInput[5], 
             publicKeyBytes, 
-            "")
+            userInput[6]
+        )
 
     elif(userInput[0] == ".openShop" and (not shopping)):
         shopAES, shopSocket, shopSeedNonce = StartShop()
@@ -322,6 +341,16 @@ while running:
         currentShopPage += 1
         shopSeedNonceIncrement = BrowseShop(shopAES, shopSocket, shopSeedNonce, shopSeedNonceIncrement, pageNo=currentShopPage)
     
+    elif(userInput[0] == ".browseShopPrevious" and shopping):
+        currentShopPage -= 1
+        if(currentShopPage < 0):
+            currentShopPage = 0
+        shopSeedNonceIncrement = BrowseShop(shopAES, shopSocket, shopSeedNonce, shopSeedNonceIncrement, pageNo=currentShopPage)
+    
+    elif(userInput[0] == ".browseShopSetPage" and shopping):
+        currentShopPage = int(userInput[1])
+        shopSeedNonceIncrement = BrowseShop(shopAES, shopSocket, shopSeedNonce, shopSeedNonceIncrement, pageNo=currentShopPage)
+    
     elif(userInput[0] == ".moduleQuery" and shopping):
         shopSeedNonceIncrement = ModuleQuery(shopAES, shopSocket, shopSeedNonce, shopSeedNonceIncrement, userInput[1], userInput[2])
     
@@ -334,3 +363,6 @@ while running:
         if(shopping):
             CloseShop(shopAES, shopSocket, shopSeedNonce, shopSeedNonceIncrement)
             shopping = False
+    
+    elif(userInput[0] == ".help"):
+        ShowHelpDisplay()
