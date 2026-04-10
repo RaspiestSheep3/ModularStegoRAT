@@ -140,6 +140,8 @@ def DefineNewUser(usernameDecrypt : str, passwordDecrypt : str):
     dbSocket.shutdown(socket.SHUT_RDWR)
     dbSocket.close()
 
+publicKey, publicKeyBytes, privateKey, privateKeyBytes = CreateECCKeypair()
+
 def UploadNewModule(moduleName : str, DLLPath : str, description : str, username : str, password : str, publicKeyBytes : bytes, dependencies : str):
     aes, dbSocket = InitServerConnection()
     
