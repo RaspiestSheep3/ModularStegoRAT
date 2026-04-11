@@ -129,7 +129,7 @@ def HandleClient(clientSocket : socket.socket):
 
         clientSocket.shutdown(socket.SHUT_RDWR)
         clientSocket.close()
-    
+         
     elif(requestType == "UPLOAD_NEW_MODULE"):
         moduleName = aes.decrypt(IncrementNonce(seedNonce, 1), base64.b64decode(request["Module Name"]), None).decode()
         moduleDescription = aes.decrypt(IncrementNonce(seedNonce, 2), base64.b64decode(request["Module Description"]), None).decode()
@@ -190,11 +190,12 @@ def HandleClient(clientSocket : socket.socket):
             seedNonceIncrement = 9
             try:
                 amountToRecv = dllSize
+                #print(amountToRecv)
                 with open(os.path.join(MODULE_STORAGE, str(newModuleID) + ".dll"), "wb") as f:
                     while amountToRecv > 0:
                         
-                        print(min(amountToRecv, 65536) + 16)
-                        print(int.from_bytes(seedNonce))
+                        #print(min(amountToRecv, 65536) + 16)
+                        #print(int.from_bytes(seedNonce))
                     
                         chunk = aes.decrypt(IncrementNonce(seedNonce, seedNonceIncrement), clientSocket.recv(min(amountToRecv, 65536) + 16), None)
                         f.write(chunk)
@@ -229,6 +230,99 @@ def HandleClient(clientSocket : socket.socket):
                 response = json.dumps({
                     "Transmission Status" : "SUCCESS",
                     "Module ID" : newModuleID 
+                })
+                
+            except Exception as e:
+                print(e)
+                response = json.dumps({
+                    "Transmission Status" : "FAILURE",
+                    "Reason" : str(e)
+                })
+                
+            responseEncrypted = aes.encrypt(IncrementNonce(seedNonce, seedNonceIncrement), response.encode(), None)
+            clientSocket.send(responseEncrypted.ljust(1024, b"\0"))
+            
+        clientSocket.shutdown(socket.SHUT_RDWR)
+        clientSocket.close()         
+
+    elif(requestType == "UPDATE_MODULE"):
+        moduleName = aes.decrypt(IncrementNonce(seedNonce, 1), base64.b64decode(request["Module Name"]), None).decode()
+        moduleDescription = aes.decrypt(IncrementNonce(seedNonce, 2), base64.b64decode(request["Module Description"]), None).decode()
+        username = aes.decrypt(IncrementNonce(seedNonce, 3), base64.b64decode(request["Username"]), None).decode()
+        password = aes.decrypt(IncrementNonce(seedNonce, 4), base64.b64decode(request["Password"]), None).decode()
+        publicKeyBytes = aes.decrypt(IncrementNonce(seedNonce, 5), base64.b64decode(request["Public Key"]), None)
+        dllSize = int(aes.decrypt(IncrementNonce(seedNonce, 6), base64.b64decode(request["DLL Size"]), None).decode())
+        dependencies = aes.decrypt(IncrementNonce(seedNonce, 7), base64.b64decode(request["Dependencies"]), None).decode()
+
+        #Check 1 - Does this user alr exist?
+        userExists = True
+        cursor.execute("""
+            SELECT * FROM recognisedUsers 
+            WHERE username = ?
+            AND publicKey = ?
+        """, (username, publicKeyBytes))
+
+        row = cursor.fetchone()
+        if(row == None or row == [] or (not argon2.verify(password, row[1]))):
+            userExists = False
+
+        #Check 2 - does this module alr exist?
+        moduleExists = True
+        cursor.execute("""
+            SELECT * FROM modules
+            WHERE moduleName = ?    
+        """, (moduleName,))
+        row = cursor.fetchone()
+        if (row == None or row == []):
+            moduleExists = False
+
+        #Sending our info response
+        responseMarker = "ACCEPTED" if (userExists and moduleExists) else "DENIED"
+        response = json.dumps({
+            "Status" : responseMarker,
+            "User Exists" : userExists,
+            "Module Exists" : moduleExists
+        }).encode()
+
+        responseEncrypted = aes.encrypt(IncrementNonce(seedNonce, 8), response, None)
+        clientSocket.send(responseEncrypted.ljust(1024, b"\0"))
+
+        if(responseMarker == "ACCEPTED"):
+            seedNonceIncrement = 9
+            try:
+                amountToRecv = dllSize
+                with open(os.path.join(MODULE_STORAGE, str(row[0]) + ".dll"), "wb") as f:
+                    while amountToRecv > 0:
+                        
+                        #print(min(amountToRecv, 65536) + 16)
+                        #print(int.from_bytes(seedNonce))
+                    
+                        chunk = aes.decrypt(IncrementNonce(seedNonce, seedNonceIncrement), clientSocket.recv(min(amountToRecv, 65536) + 16), None)
+                        f.write(chunk)
+                        amountToRecv -= len(chunk)
+                        seedNonceIncrement += 1
+            
+                #Writing into database
+                cursor.execute("""
+                    UPDATE modules
+                    SET 
+                        moduleVersion = ?,
+                        moduleDescription = ?,
+                        moduleLastEdited = ?,
+                        dependencies = ?
+                    WHERE moduleName = ?
+                """,
+                (
+                    int(row[4]) + 1,
+                    moduleDescription if (moduleDescription not in ["", '""', "_"]) else row[5],
+                    datetime.now(timezone.utc).strftime("%Y-%m-%d-%H-%M-%S"),    
+                    dependencies if (dependencies not in ["", '""', "_"]) else row[7],
+                    moduleName      
+                ))
+                conn.commit()
+            
+                response = json.dumps({
+                    "Transmission Status" : "SUCCESS"
                 })
                 
             except Exception as e:
