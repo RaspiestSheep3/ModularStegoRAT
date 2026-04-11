@@ -172,9 +172,9 @@ def UploadNewModule(moduleName : str, DLLPath : str, description : str, username
             while(amountToSend > 0):
                 chunk = f.read(min(amountToSend, 65536))
 
-                print(int.from_bytes(seedNonce))
+                #print(int.from_bytes(seedNonce))
 
-                print(len(aes.encrypt(IncrementNonce(seedNonce, seedNonceIncrement), chunk, None)))
+                #print(len(aes.encrypt(IncrementNonce(seedNonce, seedNonceIncrement), chunk, None)))
                 
                 dbSocket.send(aes.encrypt(IncrementNonce(seedNonce, seedNonceIncrement), chunk, None))
                 amountToSend -= min(amountToSend, 65536)
@@ -290,12 +290,57 @@ Description:
     
     return shopSeedNonceIncrement + 2
 
+def UpdateModule(moduleName : str, DLLPath : str, description : str, username : str, password : str, publicKeyBytes : bytes, dependencies : str):
+    aes, dbSocket = InitServerConnection()
+    
+    seedNonce = os.urandom(12)
+    request = json.dumps({
+        "Nonce": base64.b64encode(seedNonce).decode(), 
+        "Type" : base64.b64encode(aes.encrypt(seedNonce, "UPDATE_MODULE".encode(), None)).decode(),
+        "Module Name" : base64.b64encode(aes.encrypt(IncrementNonce(seedNonce, 1), moduleName.encode(), None)).decode(),
+        "Module Description" : base64.b64encode(aes.encrypt(IncrementNonce(seedNonce, 2), description.encode(), None)).decode(),
+        "DLL Size" :  base64.b64encode(aes.encrypt(IncrementNonce(seedNonce, 6), str(os.path.getsize(DLLPath)).encode(), None)).decode(),
+        "Dependencies" : base64.b64encode(aes.encrypt(IncrementNonce(seedNonce, 7), json.dumps(dependencies).encode(), None)).decode(),
+        #Login info to link to ourselves
+        "Username" : base64.b64encode(aes.encrypt(IncrementNonce(seedNonce, 3), username.encode(), None)).decode(),
+        "Password" : base64.b64encode(aes.encrypt(IncrementNonce(seedNonce, 4), password.encode(), None)).decode(),
+        "Public Key" : base64.b64encode(aes.encrypt(IncrementNonce(seedNonce, 5), publicKeyBytes, None)).decode(),
+    })
+    
+    request = request.encode().ljust(DB_INIT_SIZE_BYTES, b"\0")
+    dbSocket.send(request)
+    
+    dbResponse = json.loads(aes.decrypt(IncrementNonce(seedNonce,8), dbSocket.recv(1024).rstrip(b"\0"), None).decode())
+    print(dbResponse)
+
+    seedNonceIncrement = 9
+    amountToSend = os.path.getsize(DLLPath)
+    if(dbResponse["Status"] == "ACCEPTED"):
+        with open(DLLPath, "rb") as f:
+            while(amountToSend > 0):
+                chunk = f.read(min(amountToSend, 65536))
+
+                print(int.from_bytes(seedNonce))
+
+                print(len(aes.encrypt(IncrementNonce(seedNonce, seedNonceIncrement), chunk, None)))
+                
+                dbSocket.send(aes.encrypt(IncrementNonce(seedNonce, seedNonceIncrement), chunk, None))
+                amountToSend -= min(amountToSend, 65536)
+                seedNonceIncrement += 1
+    
+        dbResponse = json.loads(aes.decrypt(IncrementNonce(seedNonce,seedNonceIncrement), dbSocket.recv(1024).rstrip(b"\0"), None).decode())
+        print(dbResponse)
+        
+    dbSocket.shutdown(socket.SHUT_RDWR)
+    dbSocket.close()
+
 def ShowHelpDisplay():
     print(
 """
 List of all commands:
 .define [username] [password] - Defines a new user
 .upload [module name] [local DLL path] [description] [username] [password] [dependencies IDs] - Uploads a new module
+.update [module name] [local DLL path] [description] [username] [password] [dependencies IDs] - Updates an existing module
 .openShop - Opens a shop connection (run this before shopping)
 .browseShop - Browses the shop
 .browseShopNext - Goes to the next page of the shop
@@ -355,6 +400,17 @@ while running:
     
     elif(userInput[0] == ".moduleQuery" and shopping):
         shopSeedNonceIncrement = ModuleQuery(shopAES, shopSocket, shopSeedNonce, shopSeedNonceIncrement, userInput[1], userInput[2])
+    
+    elif(userInput[0] == ".update"):
+        UpdateModule(
+            userInput[1],
+            userInput[2],
+            userInput[3],
+            userInput[4],
+            userInput[5],
+            publicKeyBytes,
+            userInput[6]
+        )
     
     elif(userInput[0] == ".closeShop" and shopping):
         CloseShop(shopAES, shopSocket, shopSeedNonce, shopSeedNonceIncrement)
