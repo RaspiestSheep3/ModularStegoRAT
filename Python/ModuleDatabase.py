@@ -172,7 +172,7 @@ def HandleClient(clientSocket : socket.socket):
         if(lastModuleID != None):
             newModuleID = lastModuleID + 1
         else:
-            newModuleID = 0 
+            newModuleID = 1
 
         #Sending our info response
         responseMarker = "ACCEPTED" if (userExists and moduleUnique and freeID) else "DENIED"
