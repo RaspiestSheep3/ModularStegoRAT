@@ -370,13 +370,13 @@ def FormStego(modules : list[str], coverPath : str, outPath : str, victimBytesHe
     cover = Image.open(coverPath).convert("RGB")
     modulesBinaryForm = []
     for module in modules:
-        moduleBytes = int.to_bytes(NO_BYTES_PER_MODULE, int(module), byteorder="big", signed=False)
+        moduleBytes = int(module).to_bytes(NO_BYTES_PER_MODULE, byteorder="big", signed=False)
         moduleBytesStrForm = "".join(f'{bit:08b}' for bit in moduleBytes)
         for bitStr in moduleBytesStrForm:
             modulesBinaryForm.append(bitStr)
     
     #Adding the transmission end marker
-    endTransmissionMarker = ["0", "0", "0", "0", "0", "0", "0", "0"] #This is blocked on the database
+    endTransmissionMarker = ["0"] * (NO_BYTES_PER_MODULE * 8) #This is blocked on the database
     for bit in endTransmissionMarker:
         modulesBinaryForm.append(bit)
     
