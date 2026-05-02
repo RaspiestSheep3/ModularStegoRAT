@@ -193,7 +193,6 @@ def UploadNewModule(moduleName : str, DLLPath : str, description : str, username
     
     request = request.encode().ljust(DB_INIT_SIZE_BYTES, b"\0")
     dbSocket.send(request)
-    
     dbResponse = json.loads(aes.decrypt(IncrementNonce(seedNonce,8), dbSocket.recv(1024).rstrip(b"\0"), None).decode())
     print(dbResponse)
 
@@ -274,10 +273,10 @@ Name: {entry["Module Name"]}
 Owner : {entry["Module Owner Username"]}
 Version : {entry["Module Version"]}
 Last Edited: {ReformatTimestamp(entry["Module Last Edited"])}
-Dependencies : {entry["Dependencies"] if (entry["Dependencies"] not in ['""', '"_"', '"-"']) else "None"}
+Dependencies : {entry["Dependencies"].strip('"') if (entry["Dependencies"] not in ['""', '"_"', '"-"']) else "None"}
 
 Description:
-{entry["Module Description"]} 
+{entry["Module Description"].strip('"')} 
 """)
         
         print("-"*20)
@@ -459,6 +458,7 @@ currentShopPage = -1
 print("Welcome! Input .help to start")
 while running:
     userInput = input().split(" ")
+    print(userInput)
     if(userInput[0] == ".define" and (not shopping)):
         DefineNewUser(userInput[1], userInput[2])
     

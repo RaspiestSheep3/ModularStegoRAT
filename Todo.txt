@@ -1,0 +1,4 @@
+- Double check queryModule command
+- Add in setting data for stego formation
+- Make victim run the DLLs
+- Not essential - fix description system so it doesnt need _s 
