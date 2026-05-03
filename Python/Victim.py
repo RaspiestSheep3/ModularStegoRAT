@@ -153,14 +153,27 @@ def ExtractFromStego(stegoPath : str):
     #Step 3 - turn the message into a list of modules
     moduleInfo = message[:-(8 * NO_BYTES_PER_MODULE)]
     modules = []
+    moduleSettings = []
     
-    for i in range(len(moduleInfo) // (8 * NO_BYTES_PER_MODULE)):
-        moduleList = moduleInfo[i * 8 * NO_BYTES_PER_MODULE : (i + 1) * 8 * NO_BYTES_PER_MODULE]
-        moduleStr = "".join(moduleList)
+    #print(f"Module Info : {moduleInfo} || {len(moduleInfo)}")
+    
+    moduleFullSets = [moduleInfo[i : i + 512] for i in range(0, len(moduleInfo), 512)]
+
+    for moduleSet in moduleFullSets:
+        moduleRawData = moduleSet[:8 * NO_BYTES_PER_MODULE]
+        moduleSettingRawData = moduleSet[8 * NO_BYTES_PER_MODULE:]
+      
+        moduleStr = "".join(moduleRawData)
         module = int(moduleStr, 2)
         modules.append(module)
+      
+        moduleSetting = [int("".join(moduleSettingRawData[i:i+8]), 2) for i in range(0, 62 * 8, 8)]
+        moduleSettings.append(moduleSetting)
+        #print(len(moduleRawData), moduleRawData)
+        #print(len(moduleSettingsRawData))
     
     print(modules)
+    print(moduleSettings)
     
     #Step 4 - get the module DLLs from the server
     aes, dbSocket = InitServerConnection()

