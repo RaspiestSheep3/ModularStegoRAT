@@ -473,7 +473,7 @@ currentShopPage = -1
 
 print("Welcome! Input .help to start")
 while running:
-    userInput = input().split(" ")
+    userInput = input().split(" --")
     print(userInput)
     if(userInput[0] == ".define" and (not shopping)):
         DefineNewUser(userInput[1], userInput[2])

@@ -1,5 +1,7 @@
-- Double check queryModule command
+- Double check queryModule command - DONE
+    - This seems to work as intended
 - Add in setting data for stego formation - DONE through the JSON file
 - Make victim run the DLLs
     - Only run intended DLL
-- Not essential - fix description system so it doesnt need _s 
+- Not essential - fix description system so it doesnt need _s - DONE
+    - This is now done through .<cmd> --<Arg1> --<arg2>

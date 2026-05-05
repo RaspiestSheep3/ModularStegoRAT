@@ -4,5 +4,7 @@
 #pragma once
 
 #include <iostream>
+#include <string>
+#include <windows.h>
 
 // TODO: Reference additional headers your program requires here.
