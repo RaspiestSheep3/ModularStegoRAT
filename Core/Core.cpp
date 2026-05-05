@@ -25,6 +25,20 @@ int RunDLL(string DLLPath, string settingDataStringified)
 	cout << endl;
 	*/
 
+	//Running the DLL
+	HMODULE hModule = LoadLibraryA(DLLPath.c_str()); //This loades hModule as a handle to the DLL
+	if (!hModule) {
+		output = 1;
+		return output;
+	}
+
+	typedef int (*SetArgumentFunc)(int*); //Pointer to a new function
+	typedef int (*RunFunc)(); //Pointer to a new function
+	SetArgumentFunc SetArguments = (SetArgumentFunc)GetProcAddress(hModule, "SetArguments"); //This gets the function from the DLL
+	SetArguments(settings);
+	RunFunc RunModule = (RunFunc)GetProcAddress(hModule, "RunModule");
+	RunModule();
+
 	return output; //If we fail output != 0 => we can work out what the error is
 }
 

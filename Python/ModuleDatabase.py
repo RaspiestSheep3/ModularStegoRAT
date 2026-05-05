@@ -316,7 +316,7 @@ def HandleClient(clientSocket : socket.socket):
                     int(row[4]) + 1,
                     moduleDescription if (moduleDescription not in ["", '""', "_"]) else row[5],
                     datetime.now(timezone.utc).strftime("%Y-%m-%d-%H-%M-%S"),    
-                    dependencies if (dependencies not in ["", '""', "_"]) else row[7],
+                    dependencies.strip('"') if (dependencies not in ["", '""', "_"]) else row[7],
                     moduleName      
                 ))
                 conn.commit()
